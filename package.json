@@ -1,0 +1,14 @@
+{
+  "name": "rat-agent",
+  "version": "1.0.0",
+  "bin": "server.js",
+  "dependencies": {
+    "ws": "^8.0.0",
+    "ngrok": "^4.0.0"
+  },
+  "pkg": {
+    "scripts": ["server.js", "start-agent.js"],
+    "targets": ["node16-win-x64"],
+    "outputPath": "./dist"
+  }
+}
