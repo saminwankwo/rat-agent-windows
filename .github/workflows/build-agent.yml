@@ -55,4 +55,4 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: release/RemoteAgentBundle.zip
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
