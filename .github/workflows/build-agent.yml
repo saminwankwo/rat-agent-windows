@@ -1,9 +1,12 @@
-name: Build & Release Agent
+name: Build & Release RAT Agent
 
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*.*.*'      # e.g. v1.0.0
+
+permissions:
+  contents: write   # Grant permission for GitHub Releases
 
 jobs:
   build:
@@ -52,6 +55,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ github.ref_name }}
           files: release/RemoteAgentBundle.zip
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
