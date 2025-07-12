@@ -13,7 +13,7 @@ Source: "dist\\agent-win.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\\start-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{startup}\Remote Agent"; Filename: "{app}\\start-agent.exe"; WorkingDir: "{app}"
+Name: "{userstartup}\Remote Agent"; Filename: "{app}\start-agent.exe"; WorkingDir: "{app}"
 
 [Run]
 Filename: "{app}\\start-agent.exe"; Description: "Start Agent"; Flags: nowait postinstall skipifsilent
