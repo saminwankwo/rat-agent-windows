@@ -3,17 +3,18 @@ name: Build & Release RAT Agent
 on:
   push:
     tags:
-      - 'v*.*.*'      # e.g. v1.0.0
+      - 'v*.*.*'
 
 permissions:
-  contents: write   # Grant permission for GitHub Releases
+  contents: write  # allow creating releases and uploading assets
 
 jobs:
-  build:
+  build-and-release:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -34,21 +35,17 @@ jobs:
 
       - name: Install Inno Setup
         shell: pwsh
-        run: |
-          choco install innosetup -y
+        run: choco install innosetup -y
 
       - name: Compile installer
         shell: pwsh
         run: |
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' setup.iss
 
-      - name: Zip bundle
+      - name: Package release bundle
         run: |
-          mkdir release
-          cp RemoteAgentInstaller.exe release/
-          cp setup.iss release/
-          cp dist/agent-win.exe release/
-          cp dist/start-agent.exe release/
+          mkdir -p release
+          cp RemoteAgentInstaller.exe setup.iss dist/agent-win.exe dist/start-agent.exe release/
           7z a release/RemoteAgentBundle.zip release/*
         shell: bash
 
