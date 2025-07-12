@@ -45,6 +45,7 @@ const NGROK_AUTHTOKEN = process.env.NGROK_AUTHTOKEN || '2zSB66d85OsbMBJrevaGfZ3C
   } catch (err) {
     console.error('⚠️ ngrok failed:', err.message);
     process.exit(1);
+
     
   }
 })();
