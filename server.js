@@ -4,10 +4,9 @@ const { spawn } = require('child_process');
 const ngrok = require('ngrok');
 
 const PORT = 8080;
-const NGROK_AUTHTOKEN = process.env.NGROK_AUTHTOKEN || '2zSB66d85OsbMBJrevaGfZ3CIbU_6Yy7hXf8ECrMEUqekSEQG';
+const NGROK_AUTHTOKEN = "30ExAS9BnANFDjDz8bOiUGYfV99_2n6nBxnMa1S6dW2tr8Hxf";
 
 (async () => {
-  // 1) Start WebSocket server
   const server = http.createServer();
   const wss = new WebSocket.Server({ server });
   let shell;
@@ -33,10 +32,8 @@ const NGROK_AUTHTOKEN = process.env.NGROK_AUTHTOKEN || '2zSB66d85OsbMBJrevaGfZ3C
     ws.on('close', () => shell && shell.kill());
   });
 
-  // 2) Listen locally
   server.listen(PORT, () => console.log(`▶︎ Local WS server on ws://127.0.0.1:${PORT}`));
 
-  // 3) Establish ngrok tunnel
   try {
     await ngrok.authtoken(NGROK_AUTHTOKEN);
     const url = await ngrok.connect({ proto: 'http', addr: PORT });
@@ -45,7 +42,5 @@ const NGROK_AUTHTOKEN = process.env.NGROK_AUTHTOKEN || '2zSB66d85OsbMBJrevaGfZ3C
   } catch (err) {
     console.error('⚠️ ngrok failed:', err.message);
     process.exit(1);
-
-    
   }
 })();
