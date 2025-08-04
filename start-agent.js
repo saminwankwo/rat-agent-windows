@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const path = require('path');
 
 const agentName = `agent-win-${process.arch === 'x64' ? 'x64' : 'x86'}.exe`;

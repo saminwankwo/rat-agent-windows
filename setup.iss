@@ -8,6 +8,8 @@ DisableDirPage=yes
 DisableProgramGroupPage=yes  
 Compression=lzma  
 SolidCompression=yes  
+OutputDir=Output
+OutputBaseFilename=RemoteAgentInstaller
 
 [Files]
 Source: "dist\agent-win-x64.exe"; DestDir: "{app}"; Flags: ignoreversion  

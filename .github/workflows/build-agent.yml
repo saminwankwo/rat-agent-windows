@@ -20,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '16'
+          node-version: '18'
 
       - name: Install dependencies
         run: |
@@ -33,10 +33,8 @@ jobs:
       - name: Build Linux and macOS binaries
         run: |
           mkdir -p dist
-          # Linux binary
-          pkg server.js --targets node16-linux-x64 --output dist/agent-linux --options no-console
-          # macOS binary
-          pkg server.js --targets node16-macos-x64 --output dist/agent-macos --options no-console
+          pkg server.js --targets node18-linux-x64 --output dist/agent-linux --options no-console --no-bytecode
+          pkg server.js --targets node18-macos-x64 --output dist/agent-macos --options no-console --no-bytecode
 
       - name: Create Linux .deb package
         run: |
@@ -116,7 +114,7 @@ jobs:
 
   build_windows:
     name: Build Windows Binaries and Installer
-    needs: build_linux_macos
+    # Remove dependency on build_linux_macos job
     runs-on: windows-latest
 
     steps:
@@ -126,7 +124,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '16'
+          node-version: '18'
 
       - name: Install dependencies
         shell: pwsh
@@ -138,10 +136,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist -Force
-          pkg server.js --targets node16-win-x64 --output dist/agent-win-x64.exe --options no-console
-          pkg server.js --targets node16-win-x86 --output dist/agent-win-x86.exe --options no-console
-          pkg start-agent.js --targets node16-win-x64 --output dist/start-agent-x64.exe --options no-console
-          pkg start-agent.js --targets node16-win-x86 --output dist/start-agent-x86.exe --options no-console
+          # Add --no-bytecode flag to skip bytecode generation
+          pkg server.js --targets node18-win-x64 --output dist/agent-win-x64.exe --options no-console --no-bytecode
+          pkg server.js --targets node18-win-x86 --output dist/agent-win-x86.exe --options no-console --no-bytecode
+          pkg start-agent.js --targets node18-win-x64 --output dist/start-agent-x64.exe --options no-console --no-bytecode
+          pkg start-agent.js --targets node18-win-x86 --output dist/start-agent-x86.exe --options no-console --no-bytecode
 
       - name: Install Inno Setup
         shell: pwsh
@@ -150,8 +149,17 @@ jobs:
       - name: Compile Windows installer
         shell: pwsh
         run: |
+          # Create Output directory if it doesn't exist
+          New-Item -ItemType Directory -Path "Output" -Force
+          # Run Inno Setup compiler
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' setup.iss
-          Move-Item -Path "Output\RemoteAgentInstaller.exe" -Destination "dist/"
+          # Check if installer was created and move it
+          if (Test-Path "Output\RemoteAgentInstaller.exe") {
+            Move-Item -Path "Output\RemoteAgentInstaller.exe" -Destination "dist/"
+          } else {
+            Write-Error "Installer compilation failed: Output file not found"
+            exit 1
+          }
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
