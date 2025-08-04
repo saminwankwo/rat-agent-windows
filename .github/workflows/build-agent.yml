@@ -7,11 +7,10 @@ on:
 
 permissions:
   contents: write
-  actions: read  # Needed for artifact sharing between jobs
 
 jobs:
-  build_linux:
-    name: Build Linux/macOS/Windows Binaries
+  build_linux_macos:
+    name: Build Linux/macOS Binaries
     runs-on: ubuntu-latest
 
     steps:
@@ -26,28 +25,20 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev build-essential gcc make zip gnupg
+          sudo apt-get install -y ruby ruby-dev build-essential gcc make zip
           sudo gem install --no-document fpm
           npm install
           npm install -g pkg
 
-      - name: Build all binaries
+      - name: Build Linux and macOS binaries
         run: |
           mkdir -p dist
-          
-          # Windows binaries
-          pkg server.js --targets node16-win-x64 --output dist/agent-win-x64.exe --options no-console
-          pkg server.js --targets node16-win-x86 --output dist/agent-win-x86.exe --options no-console
-          pkg start-agent.js --targets node16-win-x64 --output dist/start-agent-x64.exe --options no-console
-          pkg start-agent.js --targets node16-win-x86 --output dist/start-agent-x86.exe --options no-console
-          
           # Linux binary
           pkg server.js --targets node16-linux-x64 --output dist/agent-linux --options no-console
-          
           # macOS binary
           pkg server.js --targets node16-macos-x64 --output dist/agent-macos --options no-console
 
-      - name: Create Linux package
+      - name: Create Linux .deb package
         run: |
           mkdir -p package-linux/usr/local/bin
           cp dist/agent-linux package-linux/usr/local/bin/
@@ -79,7 +70,6 @@ jobs:
           cp /etc/skel/.config/autostart/remote-agent.desktop /home/\$USER/.config/autostart/
           chmod +x /home/\$USER/.config/autostart/remote-agent.desktop
           EOF
-          
           chmod +x package-linux/DEBIAN/postinst
           fpm -s dir -t deb -n remote-agent -v ${{ github.ref_name }} --prefix=/ package-linux
           mv remote-agent_${{ github.ref_name }}_amd64.deb dist/
@@ -114,71 +104,72 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts
+          name: linux-macos-artifacts
           path: dist/
           retention-days: 1
 
   build_windows:
-    name: Build Windows Installer
-    needs: build_linux
+    name: Build Windows Binaries and Installer
+    needs: build_linux_macos
     runs-on: windows-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          name: build-artifacts
-          path: dist
+          node-version: '16'
 
-      - name: Disable Defender restrictions (Controlled Folder Access & Network Protection)
-        run: |
-          powershell -Command "Set-MpPreference -EnableControlledFolderAccess Disabled -Force"
-          powershell -Command "Set-MpPreference -EnableNetworkProtection Disabled -Force"
+      - name: Install dependencies
         shell: pwsh
+        run: |
+          npm install
+          npm install -g pkg
 
+      - name: Build Windows binaries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force
+          pkg server.js --targets node16-win-x64 --output dist/agent-win-x64.exe --options no-console
+          pkg server.js --targets node16-win-x86 --output dist/agent-win-x86.exe --options no-console
+          pkg start-agent.js --targets node16-win-x64 --output dist/start-agent-x64.exe --options no-console
+          pkg start-agent.js --targets node16-win-x86 --output dist/start-agent-x86.exe --options no-console
 
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup -y --no-progress
 
-      - name: Verify files
-        shell: pwsh
-        run: |
-          if (-not (Test-Path dist/agent-win-x64.exe)) {
-            Write-Error "Windows binaries not found!"
-            exit 1
-          }
-
-      - name: Compile installer
+      - name: Compile Windows installer
         shell: pwsh
         run: |
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' setup.iss
-          if (-not (Test-Path "Output\RemoteAgentInstaller.exe")) {
-            Write-Error "Installer compilation failed!"
-            exit 1
-          }
           Move-Item -Path "Output\RemoteAgentInstaller.exe" -Destination "dist/"
 
-      - name: Upload final artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-assets
-          path: dist/
+          name: windows-artifacts
+          path: dist
           retention-days: 1
 
   release:
     name: Create Release
-    needs: build_windows
+    needs: [build_linux_macos, build_windows]
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download artifacts
+      - name: Download Linux/macOS artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-assets
+          name: linux-macos-artifacts
+          path: release
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
           path: release
 
       - name: Create release
