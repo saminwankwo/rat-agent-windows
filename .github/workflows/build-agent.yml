@@ -71,8 +71,14 @@ jobs:
           chmod +x /home/\$USER/.config/autostart/remote-agent.desktop
           EOF
           chmod +x package-linux/DEBIAN/postinst
-          fpm -s dir -t deb -n remote-agent -v ${{ github.ref_name }} --prefix=/ package-linux
-          mv remote-agent_${{ github.ref_name }}_amd64.deb dist/
+          # Remove 'v' prefix from version for Debian package
+          VERSION="${{ github.ref_name }}"
+          if [[ "$VERSION" == v* ]]; then
+            VERSION="${VERSION#v}"
+          fi
+          fpm -s dir -t deb -n remote-agent -v "$VERSION" --prefix=/ package-linux
+          # Use the correct filename pattern without 'v' prefix
+          mv remote-agent_"$VERSION"_amd64.deb dist/
 
       - name: Create macOS package
         run: |
