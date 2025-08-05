@@ -1,4 +1,5 @@
-name: Build & Release Remote Agent
+# .github/workflows/build-windows.yml
+name: Build & Release Windows Agent
 
 on:
   push:
@@ -9,138 +10,29 @@ permissions:
   contents: write
 
 jobs:
-  build_linux_macos:
-    name: Build Linux/macOS Binaries
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '16'  # Upgraded to Node.js 20
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev build-essential gcc make zip
-          sudo gem install --no-document fpm
-          npm install
-          npm install -g pkg
-
-      - name: Build Linux and macOS binaries
-        run: |
-          mkdir -p dist
-          # Linux binary
-          pkg server.js --targets node20-linux-x64 --output dist/agent-linux --options no-console
-          # macOS binary
-          pkg server.js --targets node20-macos-x64 --output dist/agent-macos --options no-console
-
-      - name: Create Linux .deb package
-        run: |
-          mkdir -p package-linux/usr/local/bin
-          cp dist/agent-linux package-linux/usr/local/bin/
-          mkdir -p package-linux/etc/skel/.config/autostart
-          
-          cat <<EOF > package-linux/etc/skel/.config/autostart/remote-agent.desktop
-          [Desktop Entry]
-          Type=Application
-          Exec=/usr/local/bin/agent-linux
-          Hidden=false
-          NoDisplay=false
-          X-GNOME-Autostart-enabled=true
-          Name=RemoteAgent
-          Comment=Launch Remote Agent silently
-          EOF
-          
-          mkdir -p package-linux/DEBIAN
-          cat <<EOF > package-linux/DEBIAN/control
-          Package: remote-agent
-          Version: ${{ github.ref_name }}
-          Architecture: amd64
-          Maintainer: Your Name <your.email@example.com>
-          Description: Remote Access Agent
-          EOF
-          
-          cat <<EOF > package-linux/DEBIAN/postinst
-          #!/bin/bash
-          mkdir -p /home/\$USER/.config/autostart
-          cp /etc/skel/.config/autostart/remote-agent.desktop /home/\$USER/.config/autostart/
-          chmod +x /home/\$USER/.config/autostart/remote-agent.desktop
-          EOF
-          chmod +x package-linux/DEBIAN/postinst
-          # Remove 'v' prefix from version for Debian package
-          VERSION="${{ github.ref_name }}"
-          if [[ "$VERSION" == v* ]]; then
-            VERSION="${VERSION#v}"
-          fi
-          fpm -s dir -t deb -n remote-agent -v "$VERSION" --prefix=/ package-linux
-          # Use the correct filename pattern without 'v' prefix
-          mv remote-agent_"$VERSION"_amd64.deb dist/
-
-      - name: Create macOS package
-        run: |
-          mkdir -p "RemoteAgent.app/Contents/MacOS"
-          mkdir -p "RemoteAgent.app/Contents/Resources"
-          cp dist/agent-macos "RemoteAgent.app/Contents/MacOS/RemoteAgent"
-          
-          cat <<EOF > "RemoteAgent.app/Contents/Info.plist"
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleExecutable</key>
-            <string>RemoteAgent</string>
-            <key>CFBundleIdentifier</key>
-            <string>com.example.remoteagent</string>
-            <key>CFBundleName</key>
-            <string>RemoteAgent</string>
-            <key>CFBundleVersion</key>
-            <string>${{ github.ref_name }}</string>
-            <key>LSUIElement</key>
-            <true/>
-          </dict>
-          </plist>
-          EOF
-          
-          zip -r "dist/RemoteAgent-macos.zip" "RemoteAgent.app"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-macos-artifacts
-          path: dist/
-          retention-days: 1
-
-  build_windows:
-    name: Build Windows Binaries and Installer
-    needs: build_linux_macos
+  build-windows:
     runs-on: windows-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js (for npm install)
         uses: actions/setup-node@v4
         with:
-          node-version: '16'  # Upgraded to Node.js 20
+          node-version: '16'
 
       - name: Install dependencies
-        shell: pwsh
-        run: |
-          npm install
-          npm install -g pkg
+        run: npm install
+
+      - name: Install pkg
+        run: npm install -g pkg
 
       - name: Build Windows binaries
-        shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path dist -Force
-          # Use Node.js 16 targets
-          pkg server.js --targets node16-win-x64 --output dist/agent-win-x64.exe --options no-console
-          pkg server.js --targets node16-win-x86 --output dist/agent-win-x86.exe --options no-console
+          mkdir dist
+          pkg server.js --targets node16-win-x64 --output dist/agent-win-x64.exe
+          pkg server.js --targets node16-win-x86 --output dist/agent-win-x86.exe
           pkg start-agent.js --targets node16-win-x64 --output dist/start-agent-x64.exe --options no-console
           pkg start-agent.js --targets node16-win-x86 --output dist/start-agent-x86.exe --options no-console
 
@@ -148,60 +40,19 @@ jobs:
         shell: pwsh
         run: choco install innosetup -y --no-progress
 
-      - name: Compile Windows installer
+      - name: Compile Installer
         shell: pwsh
         run: |
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' setup.iss
-          Move-Item -Path "Output\RemoteAgentInstaller.exe" -Destination "dist/"
+          Move-Item -Path "Output\RemoteAgentInstaller.exe" -Destination "dist\"
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-artifacts
-          path: dist
-          retention-days: 1
-
-  release:
-    name: Create Release
-    needs: [build_linux_macos, build_windows]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download Linux/macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-macos-artifacts
-          path: release
-
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-artifacts
-          path: release
-
-      - name: Create release
+      - name: Upload Release Artifact
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           files: |
-            release/agent-win-*.exe
-            release/start-agent-*.exe
-            release/RemoteAgentInstaller.exe
-            release/remote-agent_*.deb
-            release/RemoteAgent-macos.zip
-          body: |
-            ## Remote Access Agent ${{ github.ref_name }}
-            
-            ### Windows
-            - **Installer**: RemoteAgentInstaller.exe
-            - **Standalone EXEs**: 
-              - 64-bit: agent-win-x64.exe
-              - 32-bit: agent-win-x86.exe
-            
-            ### Linux
-            - **Debian Package**: remote-agent_*.deb
-            
-            ### macOS
-            - **Application Bundle**: RemoteAgent-macos.zip
+            dist/agent-win-*.exe
+            dist/start-agent-*.exe
+            dist/RemoteAgentInstaller.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
