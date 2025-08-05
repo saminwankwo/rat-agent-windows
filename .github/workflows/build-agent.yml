@@ -138,11 +138,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist -Force
-          # Use Node.js 20 targets
-          pkg server.js --targets node20-win-x64 --output dist/agent-win-x64.exe --options no-console
-          pkg server.js --targets node20-win-x86 --output dist/agent-win-x86.exe --options no-console
-          pkg start-agent.js --targets node20-win-x64 --output dist/start-agent-x64.exe --options no-console
-          pkg start-agent.js --targets node20-win-x86 --output dist/start-agent-x86.exe --options no-console
+          # Use Node.js 16 targets
+          pkg server.js --targets node16-win-x64 --output dist/agent-win-x64.exe --options no-console
+          pkg server.js --targets node16-win-x86 --output dist/agent-win-x86.exe --options no-console
+          pkg start-agent.js --targets node16-win-x64 --output dist/start-agent-x64.exe --options no-console
+          pkg start-agent.js --targets node16-win-x86 --output dist/start-agent-x86.exe --options no-console
 
       - name: Install Inno Setup
         shell: pwsh
