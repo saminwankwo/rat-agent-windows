@@ -1,4 +1,3 @@
-# .github/workflows/build-windows.yml
 name: Build & Release Windows Agent
 
 on:
@@ -28,31 +27,33 @@ jobs:
       - name: Install pkg
         run: npm install -g pkg
 
-      - name: Build Windows binaries
+      - name: Build Windows 64-bit binaries
+        shell: pwsh
         run: |
           mkdir dist
-          pkg server.js --targets node16-win-x64 --output dist/agent-win-x64.exe
-          pkg server.js --targets node16-win-x86 --output dist/agent-win-x86.exe
+          # Console agent
+          pkg server.js --targets node16-win-x64 --output dist/agent-win-x64.exe --options no-console
+          # Silent launcher
           pkg start-agent.js --targets node16-win-x64 --output dist/start-agent-x64.exe --options no-console
-          pkg start-agent.js --targets node16-win-x86 --output dist/start-agent-x86.exe --options no-console
 
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup -y --no-progress
 
-      - name: Compile Installer
+      - name: Compile Windows installer
         shell: pwsh
         run: |
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' setup.iss
-          Move-Item -Path "Output\RemoteAgentInstaller.exe" -Destination "dist\"
+          # Move the generated installer into dist/
+          Move-Item -Path "Output\RemoteAgentInstaller.exe" -Destination "dist\RemoteAgentInstaller.exe"
 
-      - name: Upload Release Artifact
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           files: |
-            dist/agent-win-*.exe
-            dist/start-agent-*.exe
+            dist/agent-win-x64.exe
+            dist/start-agent-x64.exe
             dist/RemoteAgentInstaller.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
